@@ -1,0 +1,28 @@
+by Sam Kolins (UNI: sk3651, GitHub: skolins3651)
+
+Topic #1: Loan Grade Prediction/Modeling
+
+Based on loan amount, interest rate, and other factors provided by the data, can we predict what the loan grade will be?
+Possible techniques include:
+- Linear (logistic?) regression
+- LASSO/ElasticNet or forward/backward/stepwise regression for model selection
+- maybe PCA or some other dimension-reducing technique
+
+Topic #2: Grade Classification
+
+I didn't look too deep into this, but a cursory glance online indicates that the specific way in which loans are graded is kept
+somewhat a secret. Could we perhaps use classification techniques to try to determine how loans are graded?
+Classification techniques that might be useful:
+- Linear classifiers
+- K-nearest neighbors (KNN) or K-means/medoids clustering
+- Decision trees
+- Support vector machines (SVM's) but honestly we probably won't need these
+
+Of course, we could always fall back on...
+
+Topic #3: Exploratory Data Analysis or an EDA-Related Topic
+
+What patterns exist in the data? Can we come up with a specific hypothesis from data exploration and run tests to find evidence for it?
+Topics will depend on what the hypothesis is. I mainly suggest this because in addition to loan.csv, the database.sqlite file contains
+SIGNIFICANTLY more information to sift through. This might be stuff we want to run the more advanced models on if possible, or some
+reductive technique like PCA.
