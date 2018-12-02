@@ -1,0 +1,236 @@
+---
+title: "MLR"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r load libraries, message=FALSE, warning=FALSE, echo=FALSE}
+
+library(tidyverse)
+library(prettydoc)
+library(stringr)
+library(stringi)
+library(car)
+require(glmnet)
+library(fmsb)
+library(broom)
+
+
+```
+
+# Predicting the Interest Rates using (Funded Amount,Term,Employment Title, Employment Length, Home Ownership, Annual Income, Purpose, Debt, Public Record)
+
+```{r, echo=FALSE}
+# Preprocessing
+loan <- read.csv("../loan.csv")
+
+#loan.new <- filter(loan, stri_detect_regex(loann$emp_title, "^C[EOMAIf]O$|^c[eomaif]o$|[[:alnum:]]*\\s*president|[[:alnum:]]*\\s*President|[[:alnum:]]*\\s*director|[[:alnum:]]*\\s*Director|[[:alnum:]]*\\s*Manager|[[:alnum:]]*\\s*manager|[[:alnum:]]*\\s*associate[^s]$|[[:alnum:]]*\\s*Associate[^s]$|[[:alnum:]]*\\s*analyst|[[:alnum:]]*\\s*Analyst|^vp$|^VP$"))
+
+# Cleaning Up Employee Title
+loan.new <- loan %>% 
+  mutate(emp_title = case_when(
+    stri_detect_regex(emp_title, "^C[EOMAIf]O$|
+               ^c[eomaif]o$|
+               [[:alnum:]]*\\s*president|
+               [[:alnum:]]*\\s*President|
+               [[:alnum:]]*\\s*director|
+               [[:alnum:]]*\\s*Director|
+               ^vp$|
+               ^VP$") ~ "Top",
+    stri_detect_regex(emp_title, "[[:alnum:]]*\\s*Manager|
+               [[:alnum:]]*\\s*manager") ~ "Mid",
+    stri_detect_regex(emp_title, "[[:alnum:]]*\\s*associate[^s]$|
+               [[:alnum:]]*\\s*Associate[^s]$|
+               [[:alnum:]]*\\s*analyst|
+               [[:alnum:]]*\\s*Analyst") ~ "Low",
+    TRUE ~ "Other"
+  ))
+
+# New Data Set
+loan.new <- loan.new[,-c(1,2,3,5,8,9,10,15,16,17,18,19,20,22,23,24,26,27,28,29,30,31,33,34:74)]
+
+## 75% of the sample size
+smp <- floor(0.75 * nrow(loan.new))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(loan.new)), size = smp)
+
+#Define Training and Test Set
+train <- loan.new[train_ind, ]
+test <- loan.new[-train_ind, ]
+
+# Multiple Linear Regression Model
+lm <- lm(data = train, int_rate~.)
+summary(lm)
+
+# Check for Multicollinearity
+vif(lm);VIF(lm)
+
+# Check for Normality
+qqnorm(loan$int_rate);qqline(loan$int_rate)
+
+# Removing Excess NAs
+train <- train[complete.cases(train),]
+
+# Regularization (Using LASSO)
+m <- model.matrix(~., train)
+y <- m[,4]
+x <- m[,-4]
+
+#Fitting the Model, getting the optimum lambda
+lasso <- glmnet(x, y, alpha = 1)
+cv.fit <- cv.glmnet(x,y,alpha = 1)
+plot(cv.fit)
+opt_lambda <- cv.fit$lambda.min
+opt_lambda
+
+#Extracting the best model
+fin <- cv.fit$glmnet.fit
+fin.coef <- coef(fin, s = opt_lambda)
+y_predicted <- predict(fin, s = opt_lambda, newx = x)
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+rsq <- 1 - sse / sst
+
+# R-Squared
+rsq
+
+lasso.new <- glmnet(x,y,alpha = 1, lambda = opt_lambda)
+
+# Influential Features
+coef(lasso.new) %>%
+  tidy() %>%
+  filter(row != "(Intercept)") %>%
+  ggplot(aes(value, reorder(row, value), color = value > 0)) +
+  geom_point(show.legend = FALSE) +
+  ggtitle("Influential variables") +
+  xlab("Coefficient") +
+  ylab(NULL)
+
+```
+
+
+**Multiple Regression in itself doesn't do great - 0.26**
+
+**Penalized Multiple Regression with Lasso doesn't do great either - 0.26**
+
+**Not Much Multicollinearity**
+
+**Data not too normal**
+
+**Data not linear Either**
+
+**Next Steps - Transform Data, use nonparametric regression, random forests and other ensemble methods**
+
+
+```{r, eval=FALSE, echo=FALSE}
+
+# Multiple Regression Model
+
+lm <- lm(data = train, int_rate~.)
+summary(lm)
+
+# Check for Multicollinearity
+vif(lm)
+VIF(lm)
+cor(loan$funded_amnt, loan$installment)
+cor(train)
+
+train <- train[,-7]
+
+# Redo Multiple regression after removing "installment"
+
+lm <- lm(data = train, int_rate~.)
+
+
+# Residuals vs Fitted
+
+ggplot(lm,aes(.fitted, .resid)) + geom_point() + stat_smooth(method = "auto") +
+  geom_hline(yintercept=0, col="red", linetype="dashed") + 
+  xlab("Fitted values")+ylab("Residuals") + ggtitle("Residual vs Fitted Plot") + theme_bw()
+
+# Residuals vs Fitted for each variable
+
+train$resid <- residuals(lm)
+library(reshape2)
+plotDF <- melt(train[, c("emp_length", "grade", "purpose","annual_inc","installment",
+                         "dti","application_type","addr_state","empl_title", "resid")], id="resid")
+library(ggplot2)
+ggplot(plotDF, aes(x=value, y=resid)) +  geom_hline(yintercept=0, col="red", linetype="dashed") +
+  geom_point() + stat_smooth(method = "auto") + facet_wrap(~ variable, scales = "free")
+
+
+# Check for Normality
+
+qqnorm(train$funded_amnt); qqline(train$funded_amnt)
+ks.test(train$funded_amnt, pnorm)
+
+```
+
+
+```{r, echo=FALSE, eval=FALSE}
+
+emp.type <- split(loan.new, loan.new$empl_title)
+
+# Top Employees
+
+p <-  ggplot(emp.type$Top,aes(x=as.factor(grade),  
+                    y=as.factor(purpose), 
+                    color=as.factor(grade))) + 
+  ggtitle("Top employees get which loan grade for what purpose") +
+  xlab("Grade") + ylab("Purpose")
+
+p + geom_jitter(alpha=0.3)
+
+# Mid Employees
+
+q <-  ggplot(emp.type$Mid,aes(x=as.factor(grade),  
+                    y=as.factor(purpose), 
+                    color=as.factor(grade))) + 
+  ggtitle("Top employees get which loan grade for what purpose") +
+  xlab("Grade") + ylab("Purpose")
+
+q + geom_jitter(alpha=0.3)
+
+# Low Employees
+
+r <-  ggplot(emp.type$Low,aes(x=as.factor(grade),  
+                    y=as.factor(purpose), 
+                    color=as.factor(grade))) + 
+  ggtitle("Top employees get which loan grade for what purpose") +
+  xlab("Grade") + ylab("Purpose")
+
+r + geom_jitter(alpha=0.3)
+
+```
+
+
+**In which state which type of employee gets a loan for what purpose?**
+
+```{r, fig.width=15, fig.height=9, echo=FALSE, eval=FALSE}
+
+p <-  ggplot(loan.new,aes(x=as.factor(addr_state),  
+                    y=as.factor(purpose), 
+                    color=as.factor(home_ownership))) + 
+  ggtitle("Statewise: Which type of employee gets loans for what purposes?") +
+  xlab("state") + ylab("Purpose")
+
+p + geom_jitter(alpha=0.3)
+
+
+
+```
+
+*Interesting to see that CA folks get loans for cars, major purchases, moving and medical apart from the common debt consolidation and credit card)*
+
+*Mortgagers take loans a lot more than home owners for home improvement*
+
+
+# We can slice the data by home_ownership/Employee Type/Application type
+# Dig deeper into one state
+# Dig Deeper into one grade
+
+
