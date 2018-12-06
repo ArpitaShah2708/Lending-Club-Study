@@ -1,0 +1,29 @@
+---
+title: "Logistic Regression STAT 5291"
+author: "Michael Utomo"
+date: "December 3, 2018"
+output: html_document
+---
+
+```{r}
+library(glmnet)
+library (caret)
+dat <- loanclass
+
+```
+Train=70%, Test=30%
+```{r}
+set.seed(100)
+test.i <- sample(1:nrow(dat), .3*nrow(dat), replace=FALSE)
+test.data <- dat[test.i,]
+train.data <- dat[-test.i,]
+```
+
+```{r}
+model <- glm(x = dat[,-1], y = dat[,1], data=train.data, family=multinomial)
+summary(model)
+```
+
+
+
+
